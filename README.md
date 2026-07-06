@@ -21,7 +21,6 @@ auth = DigestAuth("anonymous", "password", "SecretZone", opaque="abc")
 
 class _Handler (BaseHTTPRequestHandler):
   def do_GET (self):
-    global auth
     authorized, stale = auth.authorize(self)
     if authorized:
       self.send_response(200)
