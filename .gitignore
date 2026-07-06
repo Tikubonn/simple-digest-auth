@@ -1,0 +1,7 @@
+bin
+build
+simple_digest_auth.egg-info
+NOTE.txt
+sample.py
+sample2.py
+*.egg

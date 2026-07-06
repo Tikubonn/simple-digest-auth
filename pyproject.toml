@@ -1,0 +1,34 @@
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simple-digest-auth"
+version = "0.1.0"
+dependencies = []
+requires-python = ">=3.12"
+authors = [
+  {name = "tikubonn"}
+]
+maintainers = [
+  {name = "tikubonn"}
+]
+description = "Provide digest auth function for http.server module."
+readme = "README.md"
+license = "AGPL-3.0"
+license-files = ["LICEN[CS]E"]
+keywords = []
+classifiers = [
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Development Status :: 5 - Production/Stable"
+]
+
+[project.urls]
+Homepage = "https://github.com/tikubonn/simple-digest-auth"
+Documentation = "https://github.com/tikubonn/simple-digest-auth/README.md"
+Repository = "https://github.com/tikubonn/simple-digest-auth.git"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
