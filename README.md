@@ -1,5 +1,5 @@
 
-# simple-basic-auth
+# simple-digest-auth
 
 ## Overview
 
@@ -47,8 +47,8 @@ pip install .
 ### Document
 
 ```py
-import simple_basic_auth
-help(simple_basic_auth)
+import simple_digest_auth
+help(simple_digest_auth)
 ```
 
 ## Donation
@@ -67,4 +67,4 @@ However, please note that this does not guarantee ongoing development or support
 
 © 2026 tikubonn
 
-simple-basic-auth licensed under the [AGPLv3](./LICENSE).
+simple-digest-auth licensed under the [AGPLv3](./LICENSE).
