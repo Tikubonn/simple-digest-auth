@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "simple-digest-auth"
 version = "0.1.0"
-dependencies = []
+dependencies = [
+  "caches@git+https://github.com/tikubonn/caches@v1.1"
+]
 requires-python = ">=3.12"
 authors = [
   {name = "tikubonn"}
