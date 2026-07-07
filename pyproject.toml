@@ -34,3 +34,14 @@ Repository = "https://github.com/tikubonn/simple-digest-auth.git"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+  "pylint"
+]
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-v"
+testpaths = ["test"]
+log_cli_level = "DEBUG"
