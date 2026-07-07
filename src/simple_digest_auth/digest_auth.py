@@ -5,197 +5,13 @@ import hashlib
 import logging
 import secrets
 import traceback
-from enum import Enum, auto, unique
 from typing import ClassVar
 from dataclasses import dataclass
-
-"""http.server 向けの簡素な Digest 認証の機能を提供します。
-
-Examples
---------
->>> from http.server import BaseHTTPRequestHandler, HTTPServer
->>> from simple_digest_auth import DigestAuth, Algorithm
->>>
->>> auth = DigestAuth("anonymous", "password", "SecretZone")
->>>
->>> class _Handler (BaseHTTPRequestHandler):
->>>   def do_GET (self):
->>>     authorized, stale = auth.authorize(self)
->>>     if authorized:
->>>       self.send_response(200)
->>>       self.send_header("Content-Type", "text/plain")
->>>       self.end_headers()
->>>       self.wfile.write("Authorization was succeed.")
->>>     else:
->>>       auth.send_unauthorized(self, stale)
->>>
->>> with HTTPServer(("127.0.0.1", 8080), _Handler) as server:
->>>   try:
->>>     server.serve_forever()
->>>   except KeyboardInterrupt:
->>>     pass
-"""
+from .enum_ import Algorithm, Qop
+from .digest import Digest
+from .header import Authorization, WWWAuthenticate
 
 _LOGGER:"logging.Logger" = logging.getLogger(__name__)
-
-@unique
-class Algorithm (Enum):
-
-  """ハッシュアルゴリズムを表す列挙型です。
-  """
-
-  MD5 = "MD5"
-  SHA256 = "SHA-256"
-  SHA512 = "SHA-512"
-
-@unique
-class Qop (Enum):
-
-  """保護品質を表す列挙型です。
-  """
-
-  AUTH = "auth"
-  AUTH_INT = "auth-int"
-
-@dataclass(frozen=True)
-class WWWAuthenticate:
-
-  """WWW-Authenticate ヘッダを表すデータクラスです。
-  """
-
-  realm:str
-  nonce:str
-  opaque:str
-  stale:bool
-  algorithm:Algorithm
-  qop:Qop
-  userhash:bool
-
-  def as_str (self) -> str:
-    return 'Digest realm="{realm:s}", nonce="{nonce:s}", opaque="{opaque:s}", stale="{stale:s}", qop="{qop:s}", charset="UTF-8", algorithm="{algorithm:s}", userhash="{userhash:s}"'.format(
-      realm=self.realm, 
-      nonce=self.nonce, 
-      opaque=self.opaque, 
-      stale="true" if self.stale else "false", 
-      qop=self.qop.value,
-      algorithm=self.algorithm.value,
-      userhash="true" if self.userhash else "false"
-    )
-
-@dataclass(frozen=True)
-class Authorization:
-
-  """Authorization ヘッダを表すデータクラスです。
-  """
-
-  response:str
-  username:str
-  uri:str
-  realm:str
-  opaque:str
-  algorithm:Algorithm
-  nonce:str
-  nc:str
-  qop:str
-  cnonce:str
-  userhash:bool #is optional.
-
-  _REGEXP_BODY:ClassVar[re.Pattern] = re.compile(r'^Digest (.*?)$')
-  _REGEXP_FIELD:ClassVar[re.Pattern] = re.compile(r'^(\S+)=(.*?)$')
-  _REGEXP_QUOTED:ClassVar[re.Pattern] = re.compile(r'^"(.*?)"$')
-
-  @classmethod
-  def _parse_fields (cls, source:str) -> "typing.Generator[tuple[str, str], None, None]":
-    match = cls._REGEXP_BODY.match(source)
-    if match:
-      body, = match.groups()
-      for field in body.split(","):
-        match2 = cls._REGEXP_FIELD.match(field.strip())
-        if match2:
-          field_name, field_value = match2.groups()
-          match3 = cls._REGEXP_QUOTED.match(field_value)
-          if match3:
-            field_value, = match3.groups()
-          yield field_name, field_value
-        else:
-          raise ValueError("Invalid field was detected: {!r}".format(field))
-    else:
-      raise ValueError("Invalid source was detected: {!r}".format(source))
-
-  @classmethod
-  def from_str (cls, source:str) -> "typing.Self":
-    fields = dict(cls._parse_fields(source))
-    return cls(
-      response=fields["response"],
-      username=fields["username"],
-      uri=fields["uri"],
-      realm=fields["realm"],
-      opaque=fields.get("opaque", ""),
-      algorithm=Algorithm(fields["algorithm"]),
-      nonce=fields["nonce"],
-      nc=fields["nc"],
-      qop=Qop(fields["qop"]),
-      cnonce=fields["cnonce"],
-      userhash={"true": True, "false": False}[fields.get("userhash", "false")]
-    )
-
-def calc_digest (
-  user:str, 
-  password:str, 
-  realm:str, 
-  http_method:str, 
-  http_uri:str, 
-  nonce:str,
-  nc:str,
-  cnonce:str,
-  qop:"simple_digest_auth.Qop",
-  algorithm:"simple_digest_auth.Algorithm") -> str:
-
-  """引数の値からハッシュダイジェストを算出します。
-
-  Parameters
-  ----------
-  user : str
-    算出に用いられるユーザ名です。
-  password : str
-    算出に用いられるユーザのパスワードです。
-  realm : str
-    算出に用いられる保護領域名です。
-  http_method : str
-    算出に用いられる HTTP メソッドです。
-  http_uri : str
-    算出に用いられる HTTP URL です。
-  nonce : str
-    算出に用いられる nonce 値です。
-  nc : str
-    算出に用いられる nc 値です。
-  cnonce : str
-    算出に用いられる cnonce 値です。
-  qop : simple_digest_auth.Qop
-    算出に用いられる保護品質です。
-  algorithm : simple_digest_auth.Algorithm
-    算出に用いられるハッシュアルゴリズムです。
-
-  Returns
-  -------
-  str
-    所定の手順で算出されたハッシュダイジェストです。
-  """
-
-  a1 = "{:s}:{:s}:{:s}".format(user, realm, password)
-  a2 = "{:s}:{:s}".format(http_method, http_uri)
-  result = hashlib.new(
-    algorithm.value,
-    "{:s}:{:s}:{:s}:{:s}:{:s}:{:s}".format(
-      hashlib.new(algorithm.value, a1.encode("utf-8")).hexdigest(),
-      nonce,
-      nc,
-      cnonce,
-      qop.value,
-      hashlib.new(algorithm.value, a2.encode("utf-8")).hexdigest()
-    ).encode("utf-8")
-  ).hexdigest()
-  return result
 
 class DigestAuth:
 
@@ -236,6 +52,7 @@ class DigestAuth:
     self.realm = realm
     self.opaque = opaque
     self.algorithm = algorithm
+    self.digest = Digest() #tmp.
     self.last_nonce = ""
 
   def _gen_expect_digest (
@@ -245,7 +62,7 @@ class DigestAuth:
     nonce:str, 
     nc:str, 
     cnonce:str) -> str:
-    return calc_digest(
+    return self.digest.gen(
       user=self.user,
       password=self.password,
       realm=self.realm,
