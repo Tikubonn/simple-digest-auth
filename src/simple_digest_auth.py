@@ -208,7 +208,6 @@ class DigestAuth:
     password:str, 
     realm:str, 
     opaque:str="", 
-    nonce:str="", 
     algorithm:"simple_digest_auth.Algorithm"=Algorithm.SHA256):
 
     """インスタンスの初期化を行います。
@@ -236,11 +235,8 @@ class DigestAuth:
     self.password = password
     self.realm = realm
     self.opaque = opaque
-    if nonce:
-      self.nonce = nonce
-    else:
-      self.nonce = secrets.token_hex()
     self.algorithm = algorithm
+    self.last_nonce = ""
 
   def _gen_expect_digest (
     self, 
@@ -255,7 +251,7 @@ class DigestAuth:
       realm=self.realm,
       http_method=handler.command,
       http_uri=path,
-      nonce=nonce,
+      nonce=self.last_nonce,
       nc=nc,
       cnonce=cnonce,
       qop=Qop.AUTH,
@@ -284,38 +280,50 @@ class DigestAuth:
       authorization_content = handler.headers.get("Authorization", "")
       if authorization_content:
         authorization = Authorization.from_str(authorization_content)
-        parsed_url = urllib.parse.urlparse(handler.path)
-        expect_digest = self._gen_expect_digest(
-          handler, 
-          path=parsed_url.path, 
-          nonce=authorization.nonce, 
-          nc=authorization.nc, 
-          cnonce=authorization.cnonce
-        )
         if (authorization.realm == self.realm and 
             authorization.opaque == self.opaque and 
             authorization.qop == Qop.AUTH and #qop="auth" のみ対応
             authorization.algorithm == self.algorithm and
             authorization.userhash == False): #userhash="false" のみ対応
-          if secrets.compare_digest(authorization.response, expect_digest): #秘匿情報だけは compare_digest する
-            if authorization.nonce == self.nonce:
-              _LOGGER.info("Authorization was succeed") #log.
+          if authorization.nonce == self.last_nonce:
+            parsed_url = urllib.parse.urlparse(handler.path)
+            expect_digest = self._gen_expect_digest(
+              handler, 
+              path=parsed_url.path, 
+              nonce=authorization.nonce, 
+              nc=authorization.nc, 
+              cnonce=authorization.cnonce
+            )
+            if secrets.compare_digest(authorization.response, expect_digest):
+
+              _LOGGER.info("Authorization was succeed.") #log.
+
               return True, False
             else:
-              _LOGGER.info("Authorization was failed: {:s}".format("Matched hash digest, but mismatched nonce fields.")) #log.
-              return False, True #stale=True
+
+              _LOGGER.info("Authorization was failed: {:s}".format("Mismatched hash digest.")) #log.
+
+              return False, False
           else:
-            _LOGGER.info("Authorization was failed: {:s}".format("Mismatched hash digest.")) #log.
-            return False, False
+
+            _LOGGER.info("Authorization was failed: {:s}".format("Matched hash digest, but mismatched nonce fields.")) #log.
+
+            return False, True
         else:
+
           _LOGGER.info("Authorization was failed: {:s}".format("Mismatched realm, opaque, qop, algorithm, userhash fields.")) #log.
+
           return False, False
       else:
+
         _LOGGER.info("Authorization was failed: {:s}".format("Authorization header not found.")) #log.
+
         return False, False
     except:
       traceback.print_exc()
+
       _LOGGER.info("Authorization was failed: {:s}".format("Caused some error inside server on processing.")) #log.
+
       return False, False
   
   def send_unauthorized (self, handler:"http.server.BaseHTTPRequestHandler", stale:bool):
@@ -330,9 +338,10 @@ class DigestAuth:
       ...
     """
 
+    self.last_nonce = secrets.token_hex()
     www_authentication = WWWAuthenticate(
       realm=self.realm,
-      nonce=self.nonce,
+      nonce=self.last_nonce,
       opaque=self.opaque,
       stale=stale,
       algorithm=self.algorithm,
